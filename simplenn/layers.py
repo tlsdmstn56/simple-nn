@@ -1,7 +1,8 @@
 import numpy as np
-from numba import njit
+import networkx as nx
+from abc import ABC, abstractmethod
 
-class Layer:
+class Layer(ABC):
 
     def __init__(self, verbose=False):
         self.verbose = verbose
@@ -16,18 +17,18 @@ class Layer:
 
     def get_saved_tensors(self):
         return self._saved_tensors
+    
+    @abstractmethod
+    def forward(self, *args, **kwargs):
+        pass
 
+    @abstractmethod
+    def backward(self, *args, **kwargs):
+        pass
 
-@njit
-def _linear_call(x:np.array, w:np.array, b:np.array):
-    num_input, num_output = w.shape
-    B = x.shape[0]
-    for i in range(B):
-        x[i] = x[i].reshape((1, num_input)) @ w
-    x += b.reshape((1, 1, num_output))
-    return x
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
 
-@njit
 def _linear_backward(
         x:np.array, 
         grad_output:np.array, 
@@ -51,13 +52,17 @@ class Linear(Layer):
         super().__init__(verbose)
         self.num_input = num_input
         self.num_output = num_output
-        self.w = np.random.normal(size=(1, num_input, num_output))
-        self.b = np.random.normal(size=(1, num_output, 1))
+        self.w = np.random.normal(size=(num_input, num_output))
+        self.b = np.random.normal(size=(num_output, ))
         self._last_tensor = None
     
-    def __call__(self, x:np.array):
+    def forward(self, x:np.array):
         self._last_tensor = x.copy()
-        y = _linear_call(x, self.w, self.b)
+        num_input, num_output = self.w.shape
+        B = x.shape[0]
+        x = x.reshape((B, 1, num_input))
+        y = x @ self.w
+        y += self.b
         self._print(self.num_input, self.num_output, 
                 self._last_tensor.shape, '->', y.shape)
         return y
@@ -88,7 +93,7 @@ class Conv1d(Layer):
     def _get_output_shape(self, B, L):
         return (B, self.out_channel, L - self.kernel_size+1)
 
-    def __call__(self, x:np.array):
+    def forward(self, x:np.array):
         self._saved_tensor = x.copy()
         B, IN_C, L = x.shape
         assert IN_C == self.in_channel 
@@ -99,10 +104,20 @@ class Conv1d(Layer):
                     l = np.convolve(self.w[i, j, ::-1], x[b, j, :], 'valid')
                     y[b, i, :] += l
 
-            # add bias
+        # add bias
         y += self.b.reshape((1, self.out_channel, 1))
-
         return y
+
+    def backward(self, grad_output):
+        B = grad_output.shape[0]
+        grad_output = grad_output.reshape((B, self.out_channel, -1))
+        B, _, OUT_L = grad_output.shape
+        raise NotImplementedError()
+
+
+
+
+
 
 
 
@@ -112,7 +127,7 @@ class ReLU(Layer):
         super().__init__(verbose)
         self._last_tensor = None
 
-    def __call__(self, x):
+    def forward(self, x):
         self._last_tensor = x.copy()
         return np.maximum(x, 0)
 
@@ -130,12 +145,11 @@ class Sigmoid(Layer):
         super().__init__(verbose)
         self._last_tensor = None
 
-    def __call__(self, x:np.array):
+    def forward(self, x:np.array):
         self._last_tensor = x.copy()
         return self._sigmoid(x)
 
     @staticmethod
-    @njit
     def _sigmoid(x:np.array):
         return 1/(1 + np.exp(-x))
 

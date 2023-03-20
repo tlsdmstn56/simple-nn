@@ -2,7 +2,7 @@ import numpy as np
 from tqdm import tqdm
 import random
 import matplotlib.pyplot as plt
-from layers import *
+from simplenn.layers import *
 
 
 class Model:
@@ -33,8 +33,8 @@ def run_test(layers, epochs, num_data, batch, lr, pbar=True):
             num_input = layers[i-1]
             layer = Linear(num_input, num_output)
             if ref:
-                layer.w = np.random.uniform(-5, 5, size=(num_input, num_output))
-                layer.b = np.random.uniform(-10, 10, size=(num_output, ))
+                layer.w = np.random.uniform(-10, 10, size=(num_input, num_output))
+                layer.b = np.random.uniform(-20, 20, size=(num_output, ))
             model.append(layer)
                 
             if i + 1 < len(layers):
@@ -53,13 +53,14 @@ def run_test(layers, epochs, num_data, batch, lr, pbar=True):
     bg = fig.canvas.copy_from_bbox(fig.bbox)
     fig.canvas.blit(fig.bbox)
 
-    X = [np.random.normal(size=(layers[0], )) for _ in range(num_data)]
+    X = [np.random.normal(size=(1, layers[0], )) for _ in range(num_data)]
     Y = [ref_model(x) for x in X]   
     data_idx = list(range(len(X)))
     loss_history = []
     with tqdm(total=epochs, disable=not pbar) as t:
         for e in range(epochs):
             random.shuffle(data_idx)
+            grads = []
             for i in range(0, len(data_idx), batch):
                 x_batch = [X[j] for j in data_idx[i:(i+batch)]]
                 y_ref_batch = [Y[j] for j in data_idx[i:(i+batch)]]
@@ -69,9 +70,11 @@ def run_test(layers, epochs, num_data, batch, lr, pbar=True):
                 y_pred_batch = model(x_batch)
                 y_pred_batch = y_pred_batch.reshape(y_ref_batch.shape)
                 grad = y_pred_batch - y_ref_batch
+                grads.append(grad.copy())
                 d = lr * grad
                 model.backward(d)
             t.update()
+            grads = np.concatenate(grads)
             loss = np.mean(grad**2)
             loss_history.append(loss)
             fig.canvas.restore_region(bg)
@@ -83,5 +86,5 @@ def run_test(layers, epochs, num_data, batch, lr, pbar=True):
             fig.canvas.flush_events()
             t.set_description(f'Epoch: {e:6} Loss: {float(loss):8.2f}')
     
-run_test([128, 128, 64, 64, 32, 16, 4, 1], 100, 1000, 100, 0.001)
+run_test([256, 128, 128, 64, 64, 32, 16, 4, 1], 100, 10000, 100, 0.001)
 

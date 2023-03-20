@@ -2,7 +2,7 @@ import pytest
 import torch
 import numpy as np
 
-from layers import *
+from simplenn.layers import *
 
 def test_conv1d():
     # example weight
